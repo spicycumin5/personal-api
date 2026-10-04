@@ -3,4 +3,4 @@ api_env
 **/__pycache__
 *.db
 frontend/dist
-public
+/web

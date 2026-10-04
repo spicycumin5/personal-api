@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "flask",
-  "buildCommand": "cd frontend && npm ci && npm run build -- --outDir ../public --emptyOutDir"
+  "buildCommand": "cd frontend && npm ci && npm run build -- --outDir ../web --emptyOutDir"
 }

@@ -12,8 +12,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Vercel: frontend build output served as static assets
-/public/
+# Production frontend build (served by Flask)
+/web/
 .vercel/
 
 .vercel

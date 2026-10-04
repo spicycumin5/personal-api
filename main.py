@@ -1,7 +1,7 @@
 import os
 import time
 
-from flask import Flask, g
+from flask import Flask, g, jsonify, send_from_directory
 from flask_cors import CORS
 
 from models import db
@@ -24,6 +24,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # It's per-instance and wiped on cold starts, so the DB re-seeds itself there.
 ON_VERCEL = bool(os.environ.get("VERCEL"))
 DB_PATH = "/tmp/ticketmaster.db" if ON_VERCEL else os.path.join(BASE_DIR, "ticketmaster.db")
+WEB_DIR = os.path.join(BASE_DIR, "web")  # built frontend, present only after a production build
 
 # Custom headers the labs use to explain what happened server-side. Browsers hide
 # non-standard response headers from fetch() unless CORS explicitly exposes them.
@@ -75,8 +76,20 @@ def create_app():
         response.headers["Timing-Allow-Origin"] = "*"
         return response
 
-    if not ON_VERCEL:
-        # On Vercel "/" is the built React app (public/index.html), served by the CDN.
+    if os.path.isdir(WEB_DIR):
+        # Production: serve the built React app (vite build --outDir ../web).
+        # /api/* routes are more specific, so they always win over this catch-all.
+        @app.route("/", defaults={"path": ""})
+        @app.route("/<path:path>")
+        def frontend(path):
+            if path.startswith("api/"):
+                return jsonify({"error": f"No API route for /{path}"}), 404
+            if path and os.path.isfile(os.path.join(WEB_DIR, path)):
+                return send_from_directory(WEB_DIR, path)
+            return send_from_directory(WEB_DIR, "index.html")
+
+    else:
+
         @app.route("/")
         def home():
             return "Ticketmaster REST API is running."
