@@ -1,0 +1,13 @@
+# Python
+api_env/
+__pycache__/
+*.pyc
+
+# Local SQLite database (recreate with: python seed.py)
+*.db
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
