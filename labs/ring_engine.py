@@ -7,6 +7,9 @@ Virtual nodes give each physical node many positions so load evens out.
 import bisect
 import hashlib
 import statistics
+import threading
+
+from labs.sync import synchronized
 
 RING_SIZE = 2**32
 MAX_NODES = 8
@@ -19,6 +22,7 @@ def ring_hash(value):
 
 class HashRing:
     def __init__(self, nodes=(), vnodes=1):
+        self._lock = threading.RLock()
         self.vnodes = vnodes
         self.nodes = []
         self._positions = []  # sorted vnode positions
@@ -29,18 +33,21 @@ class HashRing:
     def _vnode_positions(self, node):
         return [ring_hash(f"{node}#vn{i}") for i in range(self.vnodes)]
 
+    @synchronized
     def add_node(self, node):
         self.nodes.append(node)
         for pos in self._vnode_positions(node):
             bisect.insort(self._positions, pos)
             self._owners[pos] = node
 
+    @synchronized
     def remove_node(self, node):
         self.nodes.remove(node)
         for pos in self._vnode_positions(node):
             self._positions.remove(pos)
             del self._owners[pos]
 
+    @synchronized
     def lookup(self, key):
         """Walk clockwise: first vnode position >= hash(key), wrapping to the start."""
         if not self._positions:
@@ -50,10 +57,14 @@ class HashRing:
         pos = self._positions[i % len(self._positions)]
         return self._owners[pos], pos
 
+    @synchronized
     def set_vnodes(self, vnodes):
-        nodes = list(self.nodes)
-        self.__init__(nodes, vnodes)
+        nodes, self.nodes, self._positions, self._owners = list(self.nodes), [], [], {}
+        self.vnodes = vnodes
+        for n in nodes:
+            self.add_node(n)
 
+    @synchronized
     def vnode_list(self):
         return [{"position": p, "node": self._owners[p]} for p in self._positions]
 
@@ -67,6 +78,7 @@ class RingLab:
     def __init__(self, key_count=240, vnodes=1):
         self.keys = [f"ticket:{i}" for i in range(1, key_count + 1)]
         self.ring = HashRing(["db-1", "db-2", "db-3", "db-4"], vnodes)
+        self._lock = self.ring._lock  # one lock for the ring and the diff around changes to it
 
     def assignments(self):
         return {k: self.ring.lookup(k)[0] for k in self.keys}
@@ -84,6 +96,7 @@ class RingLab:
             "modulo_moved_pct": round(100 * len(moved_mod) / n, 1),
         }
 
+    @synchronized
     def add_node(self, name=None):
         # Reuse the lowest free name so each db-N keeps a stable colour slot in the UI.
         name = name or next(f"db-{i}" for i in range(1, MAX_NODES + 1) if f"db-{i}" not in self.ring.nodes)
@@ -93,6 +106,7 @@ class RingLab:
         diff = self._diff(before, before_mod, self.assignments(), self.modulo_assignments(self.ring.nodes))
         return {"action": "add", "node": name, **diff}
 
+    @synchronized
     def remove_node(self, name):
         before = self.assignments()
         before_mod = self.modulo_assignments(self.ring.nodes)
@@ -100,6 +114,7 @@ class RingLab:
         diff = self._diff(before, before_mod, self.assignments(), self.modulo_assignments(self.ring.nodes))
         return {"action": "remove", "node": name, **diff}
 
+    @synchronized
     def state(self):
         owners = self.assignments()
         load = {n: 0 for n in self.ring.nodes}

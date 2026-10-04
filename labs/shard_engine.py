@@ -5,8 +5,11 @@ see how the key decides balance, hot spots, and whether a query hits 1 shard or 
 """
 
 import random
+import threading
 import zlib
 from collections import Counter
+
+from labs.sync import synchronized
 
 STRATEGIES = ("range", "hash", "directory")
 SHARD_KEYS = ("show_id", "ticket_id", "venue_city", "status", "show_id+seat_section")
@@ -32,6 +35,7 @@ class ShardCluster:
         self.directory = {}
         self.range_bounds = []
         self.placement = {}  # ticket id -> shard index
+        self._lock = threading.RLock()
         self._build()
 
     # ---------- routing: key value -> shard ----------
@@ -54,6 +58,14 @@ class ShardCluster:
                 loads[target] += counts[v]
         self.placement = {r["id"]: self.route(key_value(r, self.shard_key)) for r in self.rows}
 
+    @synchronized
+    def reconfigure(self, strategy, shard_key, num_shards):
+        """Re-partition every row; returns the old placement so callers can diff it."""
+        before = dict(self.placement)
+        self.strategy, self.shard_key, self.num_shards = strategy, shard_key, num_shards
+        self._build()
+        return before
+
     def route(self, value):
         if self.strategy == "hash":
             return zlib.crc32(str(value).encode()) % self.num_shards
@@ -67,6 +79,7 @@ class ShardCluster:
 
     # ---------- queries ----------
 
+    @synchronized
     def query_by_show(self, show_id):
         """Tickets for one show. Only targetable if the shard key *is* show_id."""
         if self.shard_key == "show_id":
@@ -76,6 +89,7 @@ class ShardCluster:
         rows = [r for r in self.rows if r["show_id"] == show_id and self.placement[r["id"]] in touched]
         return self._query_result(f"show_id = {show_id}", touched, rows)
 
+    @synchronized
     def query_by_ticket(self, ticket_id):
         if self.shard_key == "ticket_id":
             touched = [self.route(ticket_id)]
@@ -108,6 +122,7 @@ class ShardCluster:
             "distinct_key_values": len({key_value(r, self.shard_key) for r in self.rows}),
         }
 
+    @synchronized
     def traffic(self, requests=5000, seed=None):
         """Reads where 60% of fans are trying to see the mega show's tickets."""
         rng = random.Random(seed)
@@ -126,6 +141,7 @@ class ShardCluster:
             "mega_show": self.mega_show,
         }
 
+    @synchronized
     def state(self):
         return {
             "config": {

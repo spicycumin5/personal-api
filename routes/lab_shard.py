@@ -30,7 +30,7 @@ def reset():
 
 
 @shard_lab_bp.route("/configure", methods=["POST"])
-@snippet("shard.configure", ShardCluster._build, ShardCluster.route)
+@snippet("shard.configure", ShardCluster.reconfigure, ShardCluster._build, ShardCluster.route)
 def configure():
     data = request.get_json(silent=True) or {}
     c = cluster()
@@ -44,9 +44,7 @@ def configure():
     if not 1 <= num_shards <= 12:
         return jsonify({"error": "num_shards must be between 1 and 12"}), 400
 
-    before = dict(c.placement)
-    c.strategy, c.shard_key, c.num_shards = strategy, shard_key, num_shards
-    c._build()
+    before = c.reconfigure(strategy, shard_key, num_shards)
     return jsonify({**c.state(), "rows_moved_pct": moved_pct(before, c.placement)}), 200
 
 

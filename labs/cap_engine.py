@@ -9,7 +9,10 @@ Replication is delivered lazily: messages carry a deliver_at time and are applie
 on the next request after that time, if the link between the replicas is up.
 """
 
+import threading
 import time
+
+from labs.sync import synchronized
 
 REPLICAS = ("us-east", "us-west", "eu")
 SEATS = [f"{row}{n}" for row in "ABC" for n in range(1, 5)]
@@ -34,6 +37,7 @@ class CapCluster:
         self.events = []
         self.last_write_replica = {}  # client -> replica (for read-your-writes)
         self._clock = 0
+        self._lock = threading.RLock()
 
     # ---------- network ----------
 
@@ -74,6 +78,7 @@ class CapCluster:
         )
         self._log(f"DOUBLE BOOKING on {seat}: {winner['holder']} keeps it, {loser['holder']} refunded")
 
+    @synchronized
     def deliver(self):
         now = time.time()
         still_pending = []
@@ -93,6 +98,7 @@ class CapCluster:
 
     # ---------- writes ----------
 
+    @synchronized
     def book(self, replica, client, seat):
         self.deliver()
         self._clock += 1
@@ -123,6 +129,7 @@ class CapCluster:
 
     # ---------- reads ----------
 
+    @synchronized
     def read(self, replica, level, client=None):
         self.deliver()
         if level == "strong":
@@ -143,10 +150,12 @@ class CapCluster:
 
     # ---------- partition control ----------
 
+    @synchronized
     def partition(self, isolate):
         self.isolated = set(isolate) & set(REPLICAS)
         self._log(f"PARTITION: {sorted(self.isolated)} cut off from the rest")
 
+    @synchronized
     def heal(self):
         self.isolated = set()
         self._log("Network healed — replaying queued replication")
@@ -155,6 +164,7 @@ class CapCluster:
             m["deliver_at"] = min(m["deliver_at"], time.time())
         self.deliver()
 
+    @synchronized
     def state(self):
         self.deliver()
         divergent = [s for s in SEATS if len({str(self.seats[r][s] and self.seats[r][s]["holder"]) for r in REPLICAS}) > 1]
