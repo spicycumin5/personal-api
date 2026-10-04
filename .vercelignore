@@ -1,0 +1,6 @@
+api_env
+**/node_modules
+**/__pycache__
+*.db
+frontend/dist
+public

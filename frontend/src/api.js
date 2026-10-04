@@ -1,4 +1,6 @@
-export const BASE_URL = "http://localhost:5000";
+// In dev, Vite (5173) and Flask (5000) are separate servers. In production (Vercel)
+// the API is served from the same origin under /api, so the base is empty.
+export const BASE_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:5000" : "");
 
 // Response headers the labs set to explain what happened server-side
 // (Flask exposes them via CORS in main.py).

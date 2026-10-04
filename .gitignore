@@ -11,3 +11,7 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Vercel: frontend build output served as static assets
+/public/
+.vercel/

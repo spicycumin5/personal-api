@@ -32,7 +32,7 @@ function RequestAnatomy({ runRequest }) {
     const path = `/api/lab/net/ping?kb=${kb}&n=${Date.now()}`;
     const tx = await runRequest("GET", path, "net.ping");
     await sleep(50); // the timing entry lands just after the response body is read
-    const entry = performance.getEntriesByName(`${BASE_URL}${path}`).pop();
+    const entry = performance.getEntriesByName(new URL(`${BASE_URL}${path}`, location.origin).href).pop();
     if (!entry) return;
     const tls = entry.secureConnectionStart > 0 ? entry.connectEnd - entry.secureConnectionStart : 0;
     setPhases({

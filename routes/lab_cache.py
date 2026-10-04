@@ -29,7 +29,7 @@ def reset():
     old = _engine
     _engine = None
     if old is not None:
-        old.crash()  # cancels any pending flush timer
+        old.crash()
     return jsonify(engine().state()), 200
 
 

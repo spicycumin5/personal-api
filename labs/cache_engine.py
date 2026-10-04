@@ -60,7 +60,7 @@ class CacheEngine:
         self.last_evicted = None
         self.write_behind_queue = {}  # key -> pending fields not yet in the DB
         self.flush_delay = 6
-        self._flush_timer = None
+        self._flush_due_at = None  # when pending write-behind data should reach the DB
         self._lock = threading.RLock()
         self._inflight = {}  # key -> threading.Event, for request coalescing
 
@@ -116,6 +116,7 @@ class CacheEngine:
 
     def get(self, key):
         """Cache-aside: check cache -> on miss read DB -> populate cache -> return."""
+        self.flush_if_due()
         cached = self._lookup(key)
         if cached is not None:
             self.hits += 1
@@ -175,16 +176,21 @@ class CacheEngine:
             raise ValueError(f"unknown strategy {strategy}")
 
     def _schedule_flush(self):
+        # A deadline checked on the next request rather than a background timer:
+        # serverless hosts (Vercel) freeze the process between requests, so timers can't be trusted.
         with self._lock:
-            if self._flush_timer is None:
-                self._flush_timer = threading.Timer(self.flush_delay, self.flush)
-                self._flush_timer.daemon = True
-                self._flush_timer.start()
+            if self._flush_due_at is None:
+                self._flush_due_at = time.time() + self.flush_delay
+
+    def flush_if_due(self):
+        if self._flush_due_at is not None and time.time() >= self._flush_due_at:
+            return self.flush()
+        return []
 
     def flush(self):
         with self._lock:
             pending, self.write_behind_queue = self.write_behind_queue, {}
-            self._flush_timer = None
+            self._flush_due_at = None
         for key, fields in pending.items():
             self.origin.write(key, fields)
         return list(pending)
@@ -195,9 +201,7 @@ class CacheEngine:
             lost = {k: dict(v) for k, v in self.write_behind_queue.items()}
             self.entries.clear()
             self.write_behind_queue.clear()
-            if self._flush_timer:
-                self._flush_timer.cancel()
-                self._flush_timer = None
+            self._flush_due_at = None
         return lost
 
     # ---------- failure modes ----------
@@ -247,6 +251,7 @@ class CacheEngine:
     # ---------- introspection ----------
 
     def state(self):
+        self.flush_if_due()
         now = time.time()
         with self._lock:
             entries = [

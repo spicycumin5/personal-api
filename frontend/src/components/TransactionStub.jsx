@@ -66,7 +66,7 @@ function Stub({ tx }) {
           {tx.status || "—"} · {tx.elapsedMs}ms · {formatTime(tx.timestamp)}
         </span>
       </div>
-      <div className="stub-url">{tx.url.replace(BASE_URL, "")}</div>
+      <div className="stub-url">{BASE_URL ? tx.url.replace(BASE_URL, "") : tx.url}</div>
 
       {chips.length > 0 && (
         <div className="chip-row">

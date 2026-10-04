@@ -5,6 +5,7 @@ from flask import Flask, g
 from flask_cors import CORS
 
 from models import db
+from seed import seed_if_empty
 from routes.venues import venues_bp
 from routes.shows import shows_bp
 from routes.tickets import tickets_bp
@@ -18,6 +19,11 @@ from routes.lab_network import net_lab_bp
 from routes.lab_data import data_lab_bp
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# On Vercel the deployment bundle is read-only; /tmp is the only writable place.
+# It's per-instance and wiped on cold starts, so the DB re-seeds itself there.
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+DB_PATH = "/tmp/ticketmaster.db" if ON_VERCEL else os.path.join(BASE_DIR, "ticketmaster.db")
 
 # Custom headers the labs use to explain what happened server-side. Browsers hide
 # non-standard response headers from fetch() unless CORS explicitly exposes them.
@@ -35,7 +41,7 @@ EXPOSED_HEADERS = [
 
 def create_app():
     app = Flask(__name__)
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "ticketmaster.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + DB_PATH
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
@@ -69,12 +75,16 @@ def create_app():
         response.headers["Timing-Allow-Origin"] = "*"
         return response
 
-    @app.route("/")
-    def home():
-        return "Ticketmaster REST API is running."
+    if not ON_VERCEL:
+        # On Vercel "/" is the built React app (public/index.html), served by the CDN.
+        @app.route("/")
+        def home():
+            return "Ticketmaster REST API is running."
 
     with app.app_context():
         db.create_all()
+        if ON_VERCEL:
+            seed_if_empty()
 
     return app
 
